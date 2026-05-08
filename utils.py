@@ -8,7 +8,7 @@ import urllib
 from functools import reduce
 from json import dumps
 from time import sleep
-import socket
+import requests
 from colorama import Fore, Style
 from tqdm import tqdm
 
@@ -132,7 +132,7 @@ def print_dim_red(msg):
 def print_dim(msg):
 	print(Style.DIM + str(msg) + Style.RESET_ALL)
 
-def download_with_progress(url, output_path, expected_size, verbose_output, size_tolerance):
+def download_with_progress(url, output_path, expected_size, verbose_output, size_tolerance, headers=None):
 	class download_progress_bar(tqdm):
 		def __init__(self, expected_size=None, dynamic_ncols=True):
 			r_bar = '| {n_fmt}{unit}/{total_fmt}{unit} [{elapsed}<{remaining}, {rate_fmt}{postfix}]'
@@ -143,44 +143,38 @@ def download_with_progress(url, output_path, expected_size, verbose_output, size
 				dynamic_ncols=dynamic_ncols, bar_format=format
 			)
 
-		def update_to(self, b=1, bsize=1, tsize=None):
-			if tsize is not None:
-				self.total = tsize
-			self.update(b * bsize - self.n)
-			
+	try:
+		with requests.get(url, headers=headers, stream=True, timeout=30) as response:
+			response.raise_for_status()
+			with open(output_path, 'wb') as f:
+				with download_progress_bar(expected_size=expected_size) as t:
+					for chunk in response.iter_content(chunk_size=8192):
+						if chunk:
+							f.write(chunk)
+							t.update(len(chunk))
 
-	with download_progress_bar(expected_size=expected_size) as t:
-		try:
-			download_speed = 1.1  # simulate slow download speed
-			time_out = expected_size / download_speed 		
-			# socket.setdefaulttimeout(time_out)
-			urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
-			file_size = os.path.getsize(output_path)
-			if abs(file_size - expected_size) > size_tolerance:
-				t.update_to(bsize=0, tsize=expected_size)
-				if verbose_output:
-					print_dim_red(
-						f'Size mismatch: Expected {expected_size} bytes but got {file_size}. '
-			   			f'Size difference: {size_to_string(abs(file_size - expected_size))}.\n'
-						f'You might want to increase FILE_SIZE_MISMATCH_TOLERANCE in config.py'
-					)
-				raise Exception(f'Failed to download file at {url}.{"" if verbose_output else " Enable verbose output for more details."}')
-			
-			t.update_to(bsize=file_size, tsize=file_size)
-			t.close()
-
-			if file_size != expected_size and verbose_output:
+		file_size = os.path.getsize(output_path)
+		if abs(file_size - expected_size) > size_tolerance:
+			if verbose_output:
 				print_dim_red(
-					f'Size mismatch within tolerance: Expected {expected_size} bytes but got {file_size}. '
-					f'Size difference: {size_to_string(abs(file_size - expected_size))}.'
+					f'Size mismatch: Expected {expected_size} bytes but got {file_size}. '
+					f'Size difference: {size_to_string(abs(file_size - expected_size))}.\n'
+					f'You might want to increase FILE_SIZE_MISMATCH_TOLERANCE in config.py'
 				)
-		except:
-			try:
-				os.remove(output_path)
-			except OSError:
-				pass
-			
-			raise
+			raise Exception(f'Failed to download file at {url}.{"" if verbose_output else " Enable verbose output for more details."}')
+
+		if file_size != expected_size and verbose_output:
+			print_dim_red(
+				f'Size mismatch within tolerance: Expected {expected_size} bytes but got {file_size}. '
+				f'Size difference: {size_to_string(abs(file_size - expected_size))}.'
+			)
+	except:
+		try:
+			os.remove(output_path)
+		except OSError:
+			pass
+
+		raise
 
 def is_debug() -> bool:
     """Return if the debugger is currently active"""

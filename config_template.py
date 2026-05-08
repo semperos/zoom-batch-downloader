@@ -1,7 +1,22 @@
-# Zoom API credentials.
-ACCOUNT_ID = R"##########"
-CLIENT_ID = R"##########"
-CLIENT_SECRET = R"##########"
+import subprocess
+
+
+def _cred(key: str) -> str:
+    """Retrieve a credential from the system keychain via the `cred` CLI."""
+    result = subprocess.run(
+        ["cred", "zoom", "recordingapp", key],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+# Zoom API credentials — fetched at runtime via the `cred` CLI, never stored in plain text.
+ACCOUNT_ID = _cred("accountId")
+CLIENT_ID = _cred("clientId")
+CLIENT_SECRET = _cred("clientSecret")
+SECRET_TOKEN = _cred("secretToken")
 
 
 # Insert non ready files flag here, if it's true only files that were not ready during last runtime will be downloaded.

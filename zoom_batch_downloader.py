@@ -12,9 +12,6 @@ from colorama import Fore, Style
 
 import utils
 from zoom_client import zoom_client
-import ssl
-
-ssl._create_default_https_context = ssl._create_unverified_context
 
 colorama.init()
 
@@ -228,7 +225,7 @@ def get_meetings(meeting_uuids):
         for meeting_uuid in utils.percentage_tqdm(meeting_uuids):
             url = f"https://api.zoom.us/v2/meetings/{utils.double_encode(meeting_uuid)}/recordings"
             try:
-                meetings.append(client.get(url))
+                meetings.append(client.get_with_retry(url))
                 cursor.execute("DELETE FROM meetings WHERE uuid = ?", (meeting_uuid,))
             except Exception as e:
                 cursor.execute(
@@ -349,10 +346,6 @@ def download_recording_file(
     else:
         return False
 
-    os.rename(tmp_file_path, file_path)
-
-    return True
-
 
 def download_with_retry(
     download_url,
@@ -365,14 +358,14 @@ def download_with_retry(
     retries = 0
     while retries < max_retries:
         try:
-            client.do_with_token(
-                lambda t: utils.download_with_progress(
-                    f"{download_url}?access_token={t}",
-                    tmp_file_path,
-                    file_size,
-                    verbose_output,
-                    file_size_mismatch_tolerance,
-                )
+            token = client.get_token()
+            utils.download_with_progress(
+                download_url,
+                tmp_file_path,
+                file_size,
+                verbose_output,
+                file_size_mismatch_tolerance,
+                headers={"Authorization": f"Bearer {token}"},
             )
             return True  # Download succeeded, no need to retry
         except Exception as e:
